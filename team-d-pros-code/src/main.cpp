@@ -11,6 +11,7 @@
 #define CONVEYOR_PORT 1
 #define FLYWHEEL_PORT 12
 #define INERTIAL_PORT 13
+#define VISION_PORT 19
 
 #pragma endregion PORTS
 
@@ -90,6 +91,8 @@ pros::Motor conveyor_motor(CONVEYOR_PORT);
 pros::Motor flywheel_motor(FLYWHEEL_PORT);
 pros::Motor roller_motor(ROLLER_MOTOR_PORT);
 pros::Imu inertial_motor(INERTIAL_PORT);
+
+pros::Vision vision(VISION_PORT, pros::E_VISION_ZERO_CENTER);
 #pragma endregion SETUP_PORTS
 
 #pragma region SCREEN_FUNCTIONS
@@ -246,7 +249,7 @@ void FingerActivate()
 	// FingerMotor.setPosition(0, turns);
 
 	finger_motor.move_velocity(200);
-	while (finger_motor.get_position() < 540)
+	while (finger_motor.get_position() < 15)
 	{
 		pros::delay(20);
 	}
@@ -256,7 +259,7 @@ void FingerActivate()
 		pros::delay(20);
 	}
 	finger_motor.move_velocity(0);
-	pros::delay(300);
+	//pros::delay(300);
 }
 
 #pragma endregion AUTONOMOUS_FUNCTIONS
@@ -321,20 +324,20 @@ void updateFinger()
 	finger_motor.tare_position();
 	if (fingerMode == 1)
 	{ // FINGER OUT!
-		finger_motor.move_velocity(200);
-		if (finger_motor.get_position() >= 504)
+		finger_motor.move_velocity(100);
+		if (finger_motor.get_position() >= 10)
 		{
 			fingerMode = 2;
 		}
 	}
 	else if (fingerMode == 2)
 	{ // FINGER RETURN!
-		finger_motor.move_velocity(-200);
+		finger_motor.move_velocity(-100);
 		if (finger_motor.get_position() <= 0)
 		{
 			finger_motor.move_velocity(0);
 			fingerMode = 0;
-			refreshScreen(false, false, true);
+			//refreshScreen(false, false, true);
 		}
 	}
 }
@@ -400,6 +403,21 @@ void on_center_button()
 void initialize()
 {
 	pros::lcd::initialize();
+	
+	pros::Controller master(pros::E_CONTROLLER_MASTER);
+	pros::Motor left_drive1(LEFT_DRIVE_1_PORT, pros::E_MOTOR_GEAR_GREEN, false);
+	pros::Motor left_drive2(LEFT_DRIVE_2_PORT, pros::E_MOTOR_GEAR_GREEN, false);
+	pros::Motor right_drive1(RIGHT_DRIVE_1_PORT, pros::E_MOTOR_GEAR_GREEN, true);
+	pros::Motor right_drive2(RIGHT_DRIVE_2_PORT, pros::E_MOTOR_GEAR_GREEN, true);
+	pros::Motor_Group left_drive({left_drive1, left_drive2});
+	pros::Motor_Group right_drive({right_drive1, right_drive2});
+
+	pros::Motor finger_motor(FINGER_PORT, pros::E_MOTOR_GEAR_GREEN, false);
+	pros::Motor conveyor_motor(CONVEYOR_PORT, pros::E_MOTOR_GEAR_GREEN, false);
+	pros::Motor flywheel_motor(FLYWHEEL_PORT, pros::E_MOTOR_GEAR_GREEN, false);
+	pros::Motor roller_motor(ROLLER_MOTOR_PORT, pros::E_MOTOR_GEAR_GREEN, true);
+	pros::Imu inertial_motor(INERTIAL_PORT);
+	pros::Vision vision(VISION_PORT, pros::E_VISION_ZERO_CENTER);
 	// pros::lcd::set_text(1, "Hello PROS User!");
 
 	// pros::lcd::register_btn1_cb(on_center_button);
@@ -739,19 +757,19 @@ void opcontrol()
 		}
 
 		// Finger - Update "fingerMode" to 1 to start finger sequence
-		if (!fingerButtonPressed && master.get_digital(DIGITAL_Y))
+		if (master.get_digital(DIGITAL_Y))
 		{
 			if (fingerMode == 0)
 			{ // Only start finger sequence when finger sequence is not running
 				fingerMode = 1;
 				refreshScreen(false, false, true);
-				// FingerMotor.setPosition(0, degrees);
 			}
 			fingerButtonPressed = true;
 		}
 		if (fingerButtonPressed && !master.get_digital(DIGITAL_Y))
 		{
 			fingerButtonPressed = false;
+      		refreshScreen(false, false, true);
 		}
 
 		updateFinger();
