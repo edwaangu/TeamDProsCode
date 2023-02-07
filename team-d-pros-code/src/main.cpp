@@ -36,6 +36,9 @@ int abs(int val)
 { // Convert integers to their absolute value
 	return val < 0 ? -val : val;
 }
+double absDouble(double val){ // Convert integers to their absolute value
+  return val < 0 ? -val : val;
+}
 
 bool conveyorOn = false; // Default to conveyor OFF, boolean that controls whether the conveyor is running
 bool flywheelOn = false; // Default to flywheel OFF, boolean that controls whether the flywheeel is running
@@ -180,6 +183,171 @@ void setupScreen()
 #pragma endregion SCREEN_FUNCTIONS
 
 #pragma region AUTONOMOUS_FUNCTIONS
+
+
+void MovePID(double feet, int speed){ // Input in feet, speed in percent 0-100
+  //input is feet, converts to inches, gets radians with arc length, converts to degrees
+  float targetAngle = ((feet * 12) / 2.125) * (180/3.14159);
+  right_drive.tare_position();
+  left_drive.tare_position();
+
+  float Kp = 0;
+  float Ki = 0;
+  float Kd = 0;
+
+  float error = 0;
+  float lastError = 0;
+  float integral = 0;
+  float derivative = 0;
+
+  float errors[480];
+  int counter = 0;
+
+	pros::screen::erase();
+	pros::screen::set_pen(COLOR_RED);
+	pros::screen::draw_line(0, 120, 479, 120);
+	pros::screen::set_pen(COLOR_WHITE);
+
+  float targetSpeed = 0;
+
+  // For some reason I thought PID was always for distance, turns out it apparently was only used for correcting motors
+  std::vector<double> left_positions = left_drive.get_positions();
+  std::vector<double> right_positions = right_drive.get_positions();
+  while(left_positions[0] < targetAngle){
+	left_positions = left_drive.get_positions();
+	right_positions = right_drive.get_positions();
+    targetSpeed = targetAngle - left_positions[0];
+    if(targetSpeed > speed){
+      targetSpeed = speed;
+    }
+    if(targetSpeed < -speed){
+      targetSpeed = -speed;
+    }
+    if(targetSpeed < 5 && targetSpeed > -5){
+      if(targetSpeed < 0){
+        targetSpeed = -5;
+      }
+      else{
+        targetSpeed = 5;
+      }
+    }
+
+    error = left_positions[0] - right_positions[0];
+
+    integral = integral + error;
+    derivative = error - lastError;
+
+	left_drive.move_velocity(targetSpeed);
+	right_drive.move_velocity(targetSpeed + (error * Kp) + (integral * Ki) + (derivative * Kd));
+	
+    lastError = error + 0;
+
+    errors[counter] = error;
+	pros::screen::set_pen(COLOR_WHITE);
+	pros::screen::draw_pixel(counter, 120+(error*5));
+	pros::screen::set_pen(COLOR_BLUE);
+	pros::screen::draw_pixel(counter, 120+(integral));
+	pros::screen::set_pen(COLOR_GREEN);
+	pros::screen::draw_pixel(counter, 120+(derivative*5));
+	
+    counter ++;
+    if(counter >= 480){
+      counter = 479;
+    }
+
+    counter ++;
+    pros::delay(20);
+  }
+
+  left_drive.brake();
+  right_drive.brake();
+}
+
+void TurnA(int angle){ // Accepts any angle from 0 to 359.99, based on clockwise from starting position
+  double turnToAngle = angle;
+  if(turnToAngle >= 360){
+    turnToAngle -= 360;
+  }
+  else if(turnToAngle < 0){
+    turnToAngle += 360;
+  }
+  
+
+  double turnSpeed = 0;
+  double maxSpeed = 50;
+
+  double InertialPlus = 0;
+  double difference = turnToAngle - inertial_motor.get_heading();
+
+  
+  int counter = 0;
+  while(counter < 20){
+    difference = turnToAngle - (inertial_motor.get_heading() + InertialPlus);
+    if(absDouble(difference - 360) < absDouble(difference)){
+      InertialPlus += 360;
+      difference = turnToAngle - (inertial_motor.get_heading() + InertialPlus);
+    }
+    if(absDouble(difference + 360) < absDouble(difference)){
+      InertialPlus -= 360;
+      difference = turnToAngle - (inertial_motor.get_heading() + InertialPlus);
+    }
+
+    turnSpeed = absDouble(difference) < 2 ? (difference < 0 ? -2 : 2) : difference;
+    turnSpeed = turnSpeed > maxSpeed ? maxSpeed : (turnSpeed < -maxSpeed ? -maxSpeed : turnSpeed);
+    
+	right_drive.move_velocity(-turnSpeed);
+	left_drive.move_velocity(turnSpeed);
+
+    if(absDouble(difference) < 0.5){
+      counter ++;
+    }
+    else{
+      counter = 0;
+    }
+
+    pros::delay(20);
+  }
+
+  left_drive.brake();
+  right_drive.brake();
+}
+
+void TurnI(int angle){
+  double turnToAngle = 180 + angle;
+  if(turnToAngle >= 360){
+    turnToAngle -= 360;
+  }
+  else if(turnToAngle < 0){
+    turnToAngle += 360;
+  }
+  inertial_motor.set_heading(180);
+
+  double turnSpeed = 0;
+  double maxSpeed = 40;
+  double difference = turnToAngle - inertial_motor.get_heading();
+
+  int counter = 0;
+  while(counter < 20){
+    difference = turnToAngle - inertial_motor.get_heading();
+    turnSpeed = absDouble(difference) < 2 ? (difference < 0 ? -2 : 2) : difference;
+    turnSpeed = turnSpeed > maxSpeed ? maxSpeed : (turnSpeed < -maxSpeed ? -maxSpeed : turnSpeed);
+    
+	right_drive.move_velocity(-turnSpeed);
+	left_drive.move_velocity(turnSpeed);
+
+    if(absDouble(difference) < 0.5){
+      counter ++;
+    }
+    else{
+      counter = 0;
+    }
+
+    pros::delay(20);
+  }
+
+  left_drive.brake();
+  right_drive.brake();
+}
 
 void Move(int feet, int speed)
 { // Input in feet, speed in percent 0-100
@@ -356,7 +524,7 @@ void updateFlywheelSpeed(int speedUpdate)
 	if (flywheelOn)
 	{
 		// Set conveyor motor to full power (Because why wouldn't you)
-		flywheel_motor.move_velocity(flywheelAdjustedSpeed);
+		flywheel_motor.move_velocity(flywheelAdjustedSpeed*2);
 	}
 	else
 	{
@@ -759,7 +927,7 @@ void opcontrol()
 		// Finger - Update "fingerMode" to 1 to start finger sequence
 		if (master.get_digital(DIGITAL_Y))
 		{
-			if (fingerMode == 0)
+			if (fingerMode == 0 && flywheel_motor.get_actual_velocity() > (flywheelAdjustedSpeed * 2) - 2 && flywheel_motor.get_actual_velocity() < (flywheelAdjustedSpeed * 2) + 2)
 			{ // Only start finger sequence when finger sequence is not running
 				fingerMode = 1;
 				refreshScreen(false, false, true);
@@ -771,8 +939,11 @@ void opcontrol()
 			fingerButtonPressed = false;
       		refreshScreen(false, false, true);
 		}
+		
 
-		updateFinger();
+		pros::screen::erase();
+		pros::screen::print(pros::E_TEXT_MEDIUM, 2, "VELOCITY: ", flywheel_motor.get_actual_velocity());
+    	updateFinger();
 
 		// Expansion
 		if (master.get_digital(DIGITAL_B))
